@@ -5,7 +5,6 @@ import os
 import gc
 from datetime import datetime
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 
 st.set_page_config(page_title="Dubai Real Estate Pattern Recommender", layout="wide")
 st.title("🏙️ Dubai Real Estate Pattern Recommender")
@@ -19,7 +18,7 @@ def get_filter_metadata():
     if not os.path.exists(file_path):
         gdown.download("https://drive.google.com/uc?id=15kO9WvSnWbY4l9lpHwPYRhDmrwuiDjoI", file_path, quiet=False)
     df = pd.read_parquet(file_path, columns=[
-        "area_name_en", "property_type_en", "rooms_en", "actual_worth", "instance_date", "reg_type_en", "transaction_id"
+        "area_name_en", "property_type_en", "rooms_en", "actual_worth", "instance_date", "reg_type_en", "transaction_id", "procedure_area"
     ])
     df["instance_date"] = pd.to_datetime(df["instance_date"], errors="coerce")
     return {
@@ -27,7 +26,7 @@ def get_filter_metadata():
         "types": sorted(df["property_type_en"].dropna().unique()),
         "rooms": sorted(df["rooms_en"].dropna().unique()),
         "min_price": int(df["actual_worth"].min()),
-        "max_price": int(df["actual_worth"].max())
+        "max_price": int(df["actual_worth"].max()),
     }
 
 filters = get_filter_metadata()
@@ -113,31 +112,35 @@ if submit:
     with st.spinner("⏳ Running analysis..."):
         gc.collect()
         try:
-            df_filtered = load_and_filter_data(selected_areas, selected_types, selected_rooms, budget)
+            df_filtered = load_and_filter_data(
+                selected_areas, selected_types, selected_rooms, budget
+            )
         except Exception as e:
             st.error(f"Error filtering data: {e}")
             st.stop()
 
-        latest_qtr_count = grouped.iloc[-1]["volume"]
-        st.success(f"✅ {int(latest_qtr_count)} transactions in the latest quarter.")
+        if len(df_filtered) < 10:
+            st.warning("📉 Not enough data to calculate trends.")
+            st.stop()
 
+        df_filtered = df_filtered.sort_values("instance_date")
         grouped = df_filtered.groupby(pd.Grouper(key="instance_date", freq="Q")).agg({
             "actual_worth": "mean",
-            "transaction_id": "count"
-        }).rename(columns={"actual_worth": "avg_price", "transaction_id": "volume"}).dropna()
+            "transaction_id": "count",
+            "reg_type_en": lambda x: (x == "Off-Plan Properties").sum()
+        }).rename(columns={"actual_worth": "avg_price", "transaction_id": "volume", "reg_type_en": "offplan_count"}).dropna()
 
         if len(grouped) >= 5:
-            latest, previous = grouped.iloc[-1], grouped.iloc[-2]
+            latest = grouped.iloc[-1]
+            previous = grouped.iloc[-2]
             year_ago = grouped.iloc[-5]
 
             qoq_price = ((latest["avg_price"] - previous["avg_price"]) / previous["avg_price"]) * 100
-            yoy_price = ((latest["avg_price"] - year_ago["avg_price"]) / year_ago["avg_price"]) * 100
             qoq_volume = ((latest["volume"] - previous["volume"]) / previous["volume"]) * 100
+            yoy_price = ((latest["avg_price"] - year_ago["avg_price"]) / year_ago["avg_price"]) * 100
             yoy_volume = ((latest["volume"] - year_ago["volume"]) / year_ago["volume"]) * 100
 
-            latest_q_start = grouped.index[-1]
-            latest_q_df = df_filtered[df_filtered["instance_date"].dt.to_period("Q") == latest_q_start.to_period("Q")]
-            offplan_pct = latest_q_df["reg_type_en"].eq("Off-Plan Properties").mean()
+            offplan_pct = latest["offplan_count"] / latest["volume"] if latest["volume"] > 0 else 0
 
             tag_qoq_price = classify_change(qoq_price)
             tag_yoy_price = classify_change(yoy_price)
@@ -153,6 +156,8 @@ if submit:
             col2.metric("📈 Volume YoY", tag_yoy_vol)
             col3.metric("🧱 Offplan Level", tag_offplan)
 
+            st.info(f"📂 {int(latest['volume'])} transactions in the latest quarter.")
+
             pattern = get_pattern_insight(qoq_price, yoy_price, qoq_volume, yoy_volume, offplan_pct)
 
             if pattern is not None:
@@ -162,6 +167,8 @@ if submit:
             else:
                 st.warning("❌ No matching pattern found for current market tags.")
 
+            import plotly.graph_objects as go
+
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=grouped.index,
@@ -170,7 +177,6 @@ if submit:
                 name='Avg Price',
                 line=dict(width=3)
             ))
-
             fig.update_layout(
                 title="Quarterly Avg Price (AED)",
                 xaxis_title="Quarter",
@@ -182,9 +188,7 @@ if submit:
                 template="plotly_white",
                 height=400
             )
-
             st.plotly_chart(fig, use_container_width=True)
-
         else:
             st.warning("Not enough quarterly data to calculate changes.")
 else:

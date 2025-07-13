@@ -141,6 +141,10 @@ if submit:
             yoy_volume = ((latest["volume"] - year_ago["volume"]) / year_ago["volume"]) * 100
 
             offplan_pct = latest["offplan_count"] / latest["volume"] if latest["volume"] > 0 else 0
+            # Diagnostic Print
+            total_latest = len(df_latest_qtr)
+            offplan_latest = df_latest_qtr["reg_type_en"].eq("Off-Plan Properties").sum()
+            st.info(f"📦 In latest quarter: {offplan_latest} Off-Plan out of {total_latest} total transactions.")
 
             tag_qoq_price = classify_change(qoq_price)
             tag_yoy_price = classify_change(yoy_price)

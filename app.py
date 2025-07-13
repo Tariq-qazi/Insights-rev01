@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Dubai Real Estate Pattern Recommender", layout="wide")
-st.title("\U0001F3D9️ Dubai Real Estate Pattern Recommender")
+st.title("🏙️ Dubai Real Estate Pattern Recommender")
 
 # =======================
 # 1. LOAD FILTER OPTIONS
@@ -19,7 +19,7 @@ def get_filter_metadata():
     if not os.path.exists(file_path):
         gdown.download("https://drive.google.com/uc?id=15kO9WvSnWbY4l9lpHwPYRhDmrwuiDjoI", file_path, quiet=False)
     df = pd.read_parquet(file_path, columns=[
-        "area_name_en", "property_type_en", "rooms_en", "actual_worth", "instance_date", "reg_type_en", "transaction_id", "procedure_area"
+        "area_name_en", "property_type_en", "rooms_en", "actual_worth", "instance_date", "reg_type_en", "transaction_id"
     ])
     df["instance_date"] = pd.to_datetime(df["instance_date"], errors="coerce")
     return {
@@ -27,7 +27,7 @@ def get_filter_metadata():
         "types": sorted(df["property_type_en"].dropna().unique()),
         "rooms": sorted(df["rooms_en"].dropna().unique()),
         "min_price": int(df["actual_worth"].min()),
-        "max_price": int(df["actual_worth"].max()),
+        "max_price": int(df["actual_worth"].max())
     }
 
 filters = get_filter_metadata()
@@ -35,7 +35,7 @@ filters = get_filter_metadata()
 # =======================
 # 2. SIDEBAR FILTERS
 # =======================
-st.sidebar.header("\U0001F50D Property Filters")
+st.sidebar.header("🔍 Property Filters")
 with st.sidebar.form("filters_form"):
     selected_areas = st.multiselect("Area", filters["areas"])
     selected_types = st.multiselect("Property Type", filters["types"])
@@ -120,10 +120,6 @@ if submit:
 
         st.success(f"✅ {len(df_filtered)} transactions matched.")
 
-        if len(df_filtered) < 10:
-            st.warning("📉 Not enough data to calculate trends.")
-            st.stop()
-
         grouped = df_filtered.groupby(pd.Grouper(key="instance_date", freq="Q")).agg({
             "actual_worth": "mean",
             "transaction_id": "count"
@@ -131,15 +127,16 @@ if submit:
 
         if len(grouped) >= 5:
             latest, previous = grouped.iloc[-1], grouped.iloc[-2]
-            qoq_price = ((latest["avg_price"] - previous["avg_price"]) / previous["avg_price"]) * 100
-            qoq_volume = ((latest["volume"] - previous["volume"]) / previous["volume"]) * 100
             year_ago = grouped.iloc[-5]
+
+            qoq_price = ((latest["avg_price"] - previous["avg_price"]) / previous["avg_price"]) * 100
             yoy_price = ((latest["avg_price"] - year_ago["avg_price"]) / year_ago["avg_price"]) * 100
+            qoq_volume = ((latest["volume"] - previous["volume"]) / previous["volume"]) * 100
             yoy_volume = ((latest["volume"] - year_ago["volume"]) / year_ago["volume"]) * 100
 
-            cutoff_date = grouped.index[-5]
-            recent_df = df_filtered[df_filtered["instance_date"] >= cutoff_date]
-            offplan_pct = recent_df["reg_type_en"].eq("Off-Plan Properties").mean()
+            latest_q_start = grouped.index[-1]
+            latest_q_df = df_filtered[df_filtered["instance_date"].dt.to_period("Q") == latest_q_start.to_period("Q")]
+            offplan_pct = latest_q_df["reg_type_en"].eq("Off-Plan Properties").mean()
 
             tag_qoq_price = classify_change(qoq_price)
             tag_yoy_price = classify_change(yoy_price)
@@ -147,7 +144,7 @@ if submit:
             tag_yoy_vol = classify_change(yoy_volume)
             tag_offplan = classify_offplan(offplan_pct)
 
-            st.subheader("\U0001F4CA Market Summary Trends")
+            st.subheader("📊 Market Summary Trends")
             col1, col2, col3 = st.columns(3)
             col1.metric("🏷️ Price QoQ", tag_qoq_price)
             col1.metric("🏷️ Price YoY", tag_yoy_price)
@@ -172,6 +169,7 @@ if submit:
                 name='Avg Price',
                 line=dict(width=3)
             ))
+
             fig.update_layout(
                 title="Quarterly Avg Price (AED)",
                 xaxis_title="Quarter",
@@ -183,9 +181,10 @@ if submit:
                 template="plotly_white",
                 height=400
             )
+
             st.plotly_chart(fig, use_container_width=True)
 
         else:
             st.warning("Not enough quarterly data to calculate changes.")
 else:
-    st.info("\U0001F3AF Use the sidebar filters and click 'Run Analysis' to begin.")
+    st.info("🌟 Use the sidebar filters and click 'Run Analysis' to begin.")

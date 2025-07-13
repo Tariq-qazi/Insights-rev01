@@ -118,7 +118,8 @@ if submit:
             st.error(f"Error filtering data: {e}")
             st.stop()
 
-        st.success(f"✅ {len(df_filtered)} transactions matched.")
+        latest_qtr_count = grouped.iloc[-1]["volume"]
+        st.success(f"✅ {int(latest_qtr_count)} transactions in the latest quarter.")
 
         grouped = df_filtered.groupby(pd.Grouper(key="instance_date", freq="Q")).agg({
             "actual_worth": "mean",
